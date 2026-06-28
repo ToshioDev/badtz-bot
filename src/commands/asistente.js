@@ -47,7 +47,7 @@ export async function execute(interaction) {
     const connection = connectVoice(interaction.guild, canal.id, { selfDeaf: false });
     startVoiceAI(connection, interaction.guild);
     return interaction.reply({
-      content: `🎙️ Asistente activo en **${canal.name}**. Di **"Badtz, ..."** y te responde por voz.`,
+      content: `🎙️ Asistente activo en **${canal.name}**. Habla normal y te responde por voz (no hace falta decir "Badtz"). Usa \`/asistente salir\` para que deje de escuchar.`,
       ephemeral: true,
     });
   }
