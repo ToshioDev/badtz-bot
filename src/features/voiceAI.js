@@ -62,6 +62,11 @@ export async function startVoiceAI(connection, guild) {
     console.log("[voiceAI] ❌ conexión no llegó a Ready");
   }
 
+  wireReceiver(connection, guild, player);
+}
+
+// Conecta el listener de voz al receiver (idempotente: una vez por receiver).
+function wireReceiver(connection, guild, player) {
   const receiver = connection.receiver;
   if (wired.has(receiver)) return;
   wired.add(receiver);
@@ -79,6 +84,26 @@ export async function startVoiceAI(connection, guild) {
     capturing.add(key);
     handleUtterance(receiver, userId, guild, player).finally(() => capturing.delete(key));
   });
+}
+
+// La voz se cayó: corta reproducción colgada y limpia estado (no quedar "sordo").
+export function onVoiceDown(guildId) {
+  botSpeaking.delete(guildId);
+  const p = players.get(guildId);
+  if (p) { try { p.stop(true); } catch {} }
+}
+
+// La voz volvió: re-suscribe el reproductor, re-arma el listener y resetea estado atascado.
+export function onVoiceUp(connection, guild) {
+  if (!enabled.has(guild.id)) return;
+  const player = ensurePlayer(guild.id);
+  try { connection.subscribe(player); } catch {}
+  botSpeaking.delete(guild.id);
+  muteUntil.delete(guild.id);
+  pendingReplies.set(guild.id, 0);
+  for (const k of [...capturing]) if (k.startsWith(guild.id + ":")) capturing.delete(k);
+  wireReceiver(connection, guild, player);
+  console.log("[voiceAI] 🔁 voz reconectada, asistente re-armado en", guild.name);
 }
 
 export function stopVoiceAI(guildId) {
@@ -288,7 +313,7 @@ async function playReply(guildId, player, text) {
       resolve();
     };
     const onIdle = () => done();
-    const timer = setTimeout(done, 25_000); // seguridad
+    const timer = setTimeout(done, 20_000); // seguridad: nunca quedarse colgado
     player.on(AudioPlayerStatus.Idle, onIdle);
     try {
       player.play(createAudioResource(audio, { inputType: StreamType.Arbitrary }));
@@ -297,6 +322,7 @@ async function playReply(guildId, player, text) {
       done();
     }
   });
+  botSpeaking.delete(guildId); // garantiza que NO quede "hablando" colgado
 }
 
 function pcmToWav(pcm, sampleRate, channels) {

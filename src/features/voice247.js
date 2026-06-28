@@ -4,12 +4,22 @@ import {
   VoiceConnectionStatus,
   entersState,
 } from "@discordjs/voice";
+import { onVoiceDown, onVoiceUp } from "./voiceAI.js";
 
 // Estado deseado de "sordo" por servidor, para que las reconexiones lo respeten.
 const desiredDeaf = new Map();
 
 function attachReconnect(connection, guild, channelId) {
   connection.removeAllListeners(VoiceConnectionStatus.Disconnected);
+  connection.removeAllListeners("stateChange");
+
+  // Resiliencia: al caer/recuperarse la voz, limpia/re-arma el asistente.
+  const R = VoiceConnectionStatus.Ready;
+  connection.on("stateChange", (oldS, newS) => {
+    if (oldS.status === R && newS.status !== R) onVoiceDown(guild.id);
+    else if (newS.status === R && oldS.status !== R) onVoiceUp(connection, guild);
+  });
+
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
     try {
       await Promise.race([
@@ -53,10 +63,6 @@ export function connectVoice(guild, channelId, { selfDeaf = true } = {}) {
     adapterCreator: guild.voiceAdapterCreator,
     selfDeaf,
     selfMute: false,
-  });
-
-  connection.on("stateChange", (oldS, newS) => {
-    console.log(`[voz] estado ${oldS.status} -> ${newS.status}`);
   });
 
   attachReconnect(connection, guild, channelId);
