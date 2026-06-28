@@ -1,10 +1,6 @@
 FROM node:24-slim
 
-# Herramientas para compilar dependencias nativas (@discordjs/opus).
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
+# Sin dependencias nativas: opus por opusscript (JS), sodium por wasm, ffmpeg por ffmpeg-static.
 WORKDIR /app
 
 # Deps de producción del bot (incluye build de @discordjs/opus y descarga de ffmpeg-static).
