@@ -269,21 +269,16 @@ async function handleUtterance(receiver, userId, guild, player) {
     return;
   }
 
-  // ¿Le hablan al bot? (palabra clave o conversación en curso)
-  const inConvo = (convoUntil.get(guild.id) ?? 0) > Date.now();
+  // Mientras el asistente está activo, responde a la conversación natural.
+  // Si dijiste "Badtz" al inicio, se quita; si no, igual responde (Whisper
+  // transcribe ese nombre de forma poco confiable, así que no lo exigimos).
   const origWords = clean.split(/\s+/);
   const normWords = norm(clean).split(/\s+/);
   const wakeIdx = findWake(normWords);
-
-  let prompt;
-  if (wakeIdx >= 0) {
-    prompt = origWords.slice(wakeIdx + 1).join(" ").replace(/^[\s,.:;!?¿¡]+/, "").trim();
-  } else if (inConvo) {
-    prompt = clean;
-  } else {
-    console.log("[voiceAI] (sin palabra clave, ignoro):", JSON.stringify(clean));
-    return;
-  }
+  let prompt =
+    wakeIdx >= 0
+      ? origWords.slice(wakeIdx + 1).join(" ").replace(/^[\s,.:;!?¿¡]+/, "").trim()
+      : clean;
   if (!prompt) prompt = "Hola, ¿qué tal?";
 
   const speaker = guild.members.cache.get(userId)?.displayName ?? "Alguien";
