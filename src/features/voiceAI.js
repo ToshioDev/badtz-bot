@@ -18,8 +18,43 @@ import { getCfg } from "../settings.js";
 
 if (ffmpegPath) process.env.FFMPEG_PATH = ffmpegPath;
 
-const WAKE = /\b(badt?z|bads?|baz|batch|bat|vatos?)\b/i;
+// Palabra clave tolerante a cómo Whisper transcribe "Badtz" (bats, baz, bach...).
+const WAKE_EXACT = new Set([
+  "badtz", "badts", "bads", "bad", "bat", "bats", "batz", "baz",
+  "bach", "batch", "bartz", "vatos", "vato",
+]);
+const WAKE_FUZZY = ["badtz", "badts", "batz", "bartz", "batch", "bach"];
 const FAREWELL = /\b(gracias|adi[oó]s|ad[ií]os|chao|chau|bye|nos vemos|ya est[aá]|es todo|nada m[aá]s)\b/i;
+
+// Distancia de edición (Levenshtein) corta, para tolerar errores de transcripción.
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return 3;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,
+        d[i][j - 1] + 1,
+        d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+  return d[m][n];
+}
+
+function isWakeWord(w) {
+  if (WAKE_EXACT.has(w)) return true;
+  return WAKE_FUZZY.some((t) => lev(w, t) <= 1);
+}
+
+/** Busca la palabra clave en las primeras ~3 palabras. Devuelve su índice o -1. */
+function findWake(normWords) {
+  for (let i = 0; i < Math.min(normWords.length, 3); i++) {
+    const w = normWords[i].replace(/[^a-z]/g, "");
+    if (w && isWakeWord(w)) return i;
+  }
+  return -1;
+}
 
 const SR = 48000;
 const CH = 2;
@@ -236,11 +271,19 @@ async function handleUtterance(receiver, userId, guild, player) {
 
   // ¿Le hablan al bot? (palabra clave o conversación en curso)
   const inConvo = (convoUntil.get(guild.id) ?? 0) > Date.now();
-  const m = WAKE.exec(clean);
+  const origWords = clean.split(/\s+/);
+  const normWords = norm(clean).split(/\s+/);
+  const wakeIdx = findWake(normWords);
+
   let prompt;
-  if (m) prompt = clean.slice(m.index + m[0].length).replace(/^[\s,.:;!?¿¡]+/, "").trim();
-  else if (inConvo) prompt = clean;
-  else return;
+  if (wakeIdx >= 0) {
+    prompt = origWords.slice(wakeIdx + 1).join(" ").replace(/^[\s,.:;!?¿¡]+/, "").trim();
+  } else if (inConvo) {
+    prompt = clean;
+  } else {
+    console.log("[voiceAI] (sin palabra clave, ignoro):", JSON.stringify(clean));
+    return;
+  }
   if (!prompt) prompt = "Hola, ¿qué tal?";
 
   const speaker = guild.members.cache.get(userId)?.displayName ?? "Alguien";
