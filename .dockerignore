@@ -1,0 +1,9 @@
+node_modules
+dashboard/node_modules
+src/web/public/assets
+.env
+.env.*
+data
+.git
+*.log
+.DS_Store
